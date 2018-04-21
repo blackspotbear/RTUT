@@ -85,6 +85,22 @@ class sphere : hitable {
     }
 }
 
+class camera {
+    public camera() {
+        lower_left_corner = new Vector3(-2, -1, -1);
+        horizontal = new Vector3(4, 0, 0);
+        vertical = new Vector3(0, 2, 0);
+        origin = new Vector3(0, 0, 0);
+    }
+
+    public Ray get_ray(float u, float v) { return new Ray(origin, lower_left_corner + horizontal * u + vertical * v); }
+
+    public Vector3 origin;
+    public Vector3 lower_left_corner;
+    public Vector3 horizontal;
+    public Vector3 vertical;
+}
+
 public class RayTracer : MonoBehaviour {
 
     public RawImage m_image;
@@ -112,6 +128,7 @@ public class RayTracer : MonoBehaviour {
     }
 
     static private Texture2D rayTrace(Texture2D texture) {
+        const int ns = 100;
         var lower_left_corner = new Vector3(-2, -1, -1);
         var horizontal = new Vector3(4, 0, 0);
         var vertical = new Vector3(0, 2, 0);
@@ -120,14 +137,18 @@ public class RayTracer : MonoBehaviour {
             new sphere(new Vector3(0, 0, -1), 0.5f),
             new sphere(new Vector3(0, -100.5f, -1), 100)
         };
-
+        var cam = new camera();
         for (var j = texture.height - 1; j >= 0; j--) {
             for (var i = 0; i < texture.width; i++) {
-                var u = (float)i / texture.width;
-                var v = (float)j / texture.height;
-                var r = new Ray(origin, lower_left_corner + horizontal * u + vertical * v);
-                var col = color(r, world);
-                texture.SetPixel(i, j, col );
+                var col = Color.black;
+                for (var s = 0; s < ns; s++) {
+                    var u = (i + Random.Range(0f, 1f - float.Epsilon)) / texture.width;
+                    var v = (j + Random.Range(0f, 1f - float.Epsilon)) / texture.height;
+                    var r = cam.get_ray(u, v);
+                    col += color(r, world);
+                }
+                col /= ns;
+                texture.SetPixel(i, j, col);
             }
         }
 
