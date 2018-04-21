@@ -130,9 +130,6 @@ public class RayTracer : MonoBehaviour {
     static private Texture2D rayTrace(Texture2D texture) {
         const int ns = 100;
         var lower_left_corner = new Vector3(-2, -1, -1);
-        var horizontal = new Vector3(4, 0, 0);
-        var vertical = new Vector3(0, 2, 0);
-        var origin = new Vector3(0, 0, 0);
         var world = new hitable_list {
             new sphere(new Vector3(0, 0, -1), 0.5f),
             new sphere(new Vector3(0, -100.5f, -1), 100)
