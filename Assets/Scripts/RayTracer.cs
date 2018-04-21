@@ -15,6 +15,76 @@ class Ray {
     public Vector3 B;
 }
 
+struct hit_record {
+    public float t;
+    public Vector3 p;
+    public Vector3 normal;
+}
+
+abstract class hitable {
+    public abstract bool hit(Ray r, float t_min, float t_max, out hit_record rec);
+}
+
+class hitable_list: List<hitable> {
+    public bool hit(Ray r, float t_min, float t_max, out hit_record rec) {
+        hit_record temp_rec;
+
+        rec.normal = new Vector3();
+        rec.p = new Vector3();
+        rec.t = 0;
+
+        var hit_anything = false;
+        var closest_so_far = t_max;
+        foreach (var h in this) {
+            if (h.hit(r, t_min, closest_so_far, out temp_rec)) {
+                hit_anything = true;
+                closest_so_far = temp_rec.t;
+                rec = temp_rec;
+            }
+        }
+
+        return hit_anything;
+    }
+}
+
+class sphere : hitable {
+    public Vector3 center;
+    public float radius;
+
+    public sphere() {}
+    public sphere(Vector3 cen, float r) { center = cen; radius = r; }
+
+    public override bool hit(Ray r, float t_min, float t_max, out hit_record rec) {
+        var oc = r.origin() - center;
+        var a = Vector3.Dot(r.direction(), r.direction());
+        var b = Vector3.Dot(oc, r.direction());
+        var c = Vector3.Dot(oc, oc) - radius * radius;
+        var discrement = b * b - a * c;
+        if (discrement > 0) {
+            var temp = (-b - Mathf.Sqrt(b * b - a * c)) / a;
+            if (temp < t_max && temp > t_min) {
+                rec.t = temp;
+                rec.p = r.point_at_parameter(rec.t);
+                rec.normal = (rec.p - center) / radius;
+                return true;
+            }
+            temp = (-b + Mathf.Sqrt(b * b - a * c)) / a;
+            if (temp < t_max && temp > t_min) {
+                rec.t = temp;
+                rec.p = r.point_at_parameter(rec.t);
+                rec.normal = (rec.p - center) / radius;
+                return true;
+            }
+        }
+
+        rec.normal = new Vector3();
+        rec.p = new Vector3();
+        rec.t = 0;
+
+        return false;
+    }
+}
+
 public class RayTracer : MonoBehaviour {
 
     public RawImage m_image;
@@ -30,21 +100,15 @@ public class RayTracer : MonoBehaviour {
         
     }
 
-    static private Color color(Ray r) {
-        if (hit_sphere(new Vector3(0, 0, -1), 0.5f, r))
-            return Color.red;
-        var unit_direction = r.direction().normalized;
-        var t = 0.5f * (unit_direction.y + 1.0f);
-        return (1.0f - t) * (new Color(1, 1, 1)) + t * (new Color(0.5f, 0.7f, 1.0f));
-    }
-
-    static private bool hit_sphere(Vector3 center, float radius, Ray r) {
-        var oc = r.origin() - center;
-        var a = Vector3.Dot(r.direction(), r.direction());
-        var b = 2 * Vector3.Dot(oc, r.direction());
-        var c = Vector3.Dot(oc, oc) - radius * radius;
-        var discrement = b * b - 4 * a * c;
-        return discrement > 0;
+    static private Color color(Ray r, hitable_list world) {
+        hit_record rec;
+        if (world.hit(r, 0, float.MaxValue, out rec)) {
+            return 0.5f * new Color(rec.normal.x + 1, rec.normal.y + 1, rec.normal.z + 1);
+        } else {
+            var unit_direction = r.direction().normalized;
+            var t = 0.5f * (unit_direction.y + 1.0f);
+            return (1.0f - t) * (new Color(1, 1, 1)) + t * (new Color(0.5f, 0.7f, 1.0f));
+        }
     }
 
     static private Texture2D rayTrace(Texture2D texture) {
@@ -52,13 +116,17 @@ public class RayTracer : MonoBehaviour {
         var horizontal = new Vector3(4, 0, 0);
         var vertical = new Vector3(0, 2, 0);
         var origin = new Vector3(0, 0, 0);
+        var world = new hitable_list {
+            new sphere(new Vector3(0, 0, -1), 0.5f),
+            new sphere(new Vector3(0, -100.5f, -1), 100)
+        };
 
         for (var j = texture.height - 1; j >= 0; j--) {
             for (var i = 0; i < texture.width; i++) {
                 var u = (float)i / texture.width;
                 var v = (float)j / texture.height;
-                var ray = new Ray(origin, lower_left_corner + horizontal * u + vertical * v);
-                var col = color(ray);
+                var r = new Ray(origin, lower_left_corner + horizontal * u + vertical * v);
+                var col = color(r, world);
                 texture.SetPixel(i, j, col );
             }
         }
