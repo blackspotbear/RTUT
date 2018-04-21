@@ -126,7 +126,7 @@ public class RayTracer : MonoBehaviour {
 
     static private Color color(Ray r, hitable_list world) {
         hit_record rec;
-        if (world.hit(r, 0, float.MaxValue, out rec)) {
+        if (world.hit(r, 0.001f, float.MaxValue, out rec)) {
             var tangent = rec.p + rec.normal + random_in_unit_sphere();
             return 0.5f * color(new Ray(rec.p, tangent - rec.p), world);
         } else {
