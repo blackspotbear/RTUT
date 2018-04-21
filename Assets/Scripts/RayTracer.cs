@@ -20,7 +20,7 @@ public class RayTracer : MonoBehaviour {
     public RawImage m_image;
 
     void Start() {
-        var texture = rayTrace(new Texture2D(640, 480));
+        var texture = rayTrace(new Texture2D(640, 320));
         texture.Apply();
         m_image.texture = texture;
         Debug.Log("Hello " + this.m_image.mainTexture.width + "," + this.m_image.mainTexture.height);
@@ -30,10 +30,21 @@ public class RayTracer : MonoBehaviour {
         
     }
 
-    static private Color color(Ray ray) {
-        var unit_direction = ray.direction().normalized;
+    static private Color color(Ray r) {
+        if (hit_sphere(new Vector3(0, 0, -1), 0.5f, r))
+            return Color.red;
+        var unit_direction = r.direction().normalized;
         var t = 0.5f * (unit_direction.y + 1.0f);
         return (1.0f - t) * (new Color(1, 1, 1)) + t * (new Color(0.5f, 0.7f, 1.0f));
+    }
+
+    static private bool hit_sphere(Vector3 center, float radius, Ray r) {
+        var oc = r.origin() - center;
+        var a = Vector3.Dot(r.direction(), r.direction());
+        var b = 2 * Vector3.Dot(oc, r.direction());
+        var c = Vector3.Dot(oc, oc) - radius * radius;
+        var discrement = b * b - 4 * a * c;
+        return discrement > 0;
     }
 
     static private Texture2D rayTrace(Texture2D texture) {
