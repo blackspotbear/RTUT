@@ -116,10 +116,19 @@ public class RayTracer : MonoBehaviour {
         
     }
 
+    static private Vector3 random_in_unit_sphere() {
+        var p = new Vector3();
+        do {
+            p = 2.0f * new Vector3(Random.value, Random.value, Random.value) - new Vector3(1, 1, 1);
+        } while (p.magnitude > 1.0f);
+        return p;
+    }
+
     static private Color color(Ray r, hitable_list world) {
         hit_record rec;
         if (world.hit(r, 0, float.MaxValue, out rec)) {
-            return 0.5f * new Color(rec.normal.x + 1, rec.normal.y + 1, rec.normal.z + 1);
+            var tangent = rec.p + rec.normal + random_in_unit_sphere();
+            return 0.5f * color(new Ray(rec.p, tangent - rec.p), world);
         } else {
             var unit_direction = r.direction().normalized;
             var t = 0.5f * (unit_direction.y + 1.0f);
@@ -145,6 +154,7 @@ public class RayTracer : MonoBehaviour {
                     col += color(r, world);
                 }
                 col /= ns;
+                col = new Color(Mathf.Sqrt(col.r), Mathf.Sqrt(col.g), Mathf.Sqrt(col.b));
                 texture.SetPixel(i, j, col);
             }
         }
