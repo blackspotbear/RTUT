@@ -15,6 +15,25 @@ static class Util {
     static public Vector3 reflect(Vector3 v, Vector3 n) {
         return v - 2 * Vector3.Dot(v, n) * n;
     }
+
+    static public bool refract(Vector3 v, Vector3 n, float ni_over_nt, out Vector3 refracted) {
+        var uv = v.normalized;
+        var dt = Vector3.Dot(uv, n);
+        var discriminant = 1.0f - ni_over_nt * ni_over_nt * (1.0f - dt * dt);
+        if (discriminant > 0) {
+            // :/ use not v but uv
+            refracted = ni_over_nt * (uv - n * dt) - n * Mathf.Sqrt(discriminant);
+            return true;
+        }
+        refracted = Vector3.zero;
+        return false;
+    }
+
+    static public float schlick(float cosine, float ref_idx) {
+        float r0 = (1 - ref_idx) / (1 + ref_idx);
+        r0 = r0 * r0;
+        return r0 + (1 - r0) * Mathf.Pow(1 - cosine, 5);
+    }
 }
 
 class Ray {
@@ -61,6 +80,41 @@ class metal : material {
 
     Color albedo;
     float fuzz;
+}
+
+class dielectric : material {
+    public dielectric(float ri) { ref_idx = ri; }
+    public override bool scatter(Ray r_in, hit_record rec, out Color attenuation, out Ray scattered) {
+        Vector3 outward_normal;
+        var reflected = Util.reflect(r_in.direction(), rec.normal);
+        float ni_over_nt;
+        attenuation = new Color(1.0f, 1.0f, 1.0f);
+        Vector3 refracted;
+        float reflect_prob;
+        float cosine;
+        if (Vector3.Dot(r_in.direction(), rec.normal) > 0.0f) {
+            outward_normal = -rec.normal;
+            ni_over_nt = ref_idx;
+            cosine = ref_idx * Vector3.Dot(r_in.direction(), rec.normal) / r_in.direction().magnitude;
+        } else {
+            outward_normal = rec.normal;
+            ni_over_nt = 1.0f / ref_idx;
+            cosine = -Vector3.Dot(r_in.direction(), rec.normal) / r_in.direction().magnitude;
+        }
+        if (Util.refract(r_in.direction(), outward_normal, ni_over_nt, out refracted)) {
+            reflect_prob = Util.schlick(cosine, ref_idx);
+        } else {
+            reflect_prob = 1;
+        }
+        if (Random.value < reflect_prob) {
+            scattered = new Ray(rec.p, reflected);
+        } else {
+            scattered = new Ray(rec.p, refracted);
+        }
+        return true;
+    }
+
+    float ref_idx;
 }
 
 struct hit_record {
@@ -191,10 +245,11 @@ public class RayTracer : MonoBehaviour {
         const int ns = 100;
         var lower_left_corner = new Vector3(-2, -1, -1);
         var world = new hitable_list {
-            new sphere(new Vector3(0, 0, -1), 0.5f, new lambertian(new Color(0.8f, 0.3f, 0.3f))),
+            new sphere(new Vector3(0, 0, -1), 0.5f, new lambertian(new Color(0.1f, 0.2f, 0.5f))),
             new sphere(new Vector3(0, -100.5f, -1), 100, new lambertian(new Color(0.8f, 0.8f, 0.0f))),
-            new sphere(new Vector3(1, 0, -1), 0.5f, new metal(new Color(0.8f, 0.6f, 0.2f), 1.0f)),
-            new sphere(new Vector3(-1, 0, -1), 0.5f, new metal(new Color(0.8f, 0.8f, 0.8f), 0.3f))
+            new sphere(new Vector3(1, 0, -1), 0.5f, new metal(new Color(0.8f, 0.6f, 0.2f), 0.0f)),
+            new sphere(new Vector3(-1, 0, -1), 0.5f, new dielectric(1.5f)),
+            new sphere(new Vector3(-1, 0, -1), -0.45f, new dielectric(1.5f))
         };
         var cam = new camera();
         for (var j = texture.height - 1; j >= 0; j--) {
