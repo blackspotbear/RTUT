@@ -34,6 +34,14 @@ static class Util {
         r0 = r0 * r0;
         return r0 + (1 - r0) * Mathf.Pow(1 - cosine, 5);
     }
+
+    static public Vector3 random_in_unit_disk() {
+        Vector3 p;
+        do {
+            p = 2 * new Vector3(Random.value, Random.value, 0) - new Vector3(1, 1, 0);
+        } while (Vector3.Dot(p, p) > 1.0);
+        return p;
+    }
 }
 
 class Ray {
@@ -194,8 +202,8 @@ class sphere : hitable {
 }
 
 class camera {
-    public camera(Vector3 lookfrom, Vector3 lookat, Vector3 vup, float vfov, float aspect) {
-        Vector3 u, v, w;
+    public camera(Vector3 lookfrom, Vector3 lookat, Vector3 vup, float vfov, float aspect, float aperture, float focus_dist) {
+        lens_radius = aperture / 2;
         var theta = vfov * Mathf.PI / 180;
         var half_height = Mathf.Tan(theta / 2);
         var half_width = aspect * half_height;
@@ -203,17 +211,23 @@ class camera {
         w = (lookfrom - lookat).normalized;
         u = Vector3.Cross(vup, w).normalized;
         v = Vector3.Cross(w, u);
-        lower_left_corner = origin - half_width * u - half_height * v - w;
-        horizontal = 2 * half_width * u;
-        vertical = 2 * half_height * v;
+        lower_left_corner = origin - half_width * focus_dist * u - half_height * focus_dist * v - focus_dist * w;
+        horizontal = 2 * half_width * focus_dist * u;
+        vertical = 2 * half_height * focus_dist * v;
     }
 
-    public Ray get_ray(float u, float v) { return new Ray(origin, lower_left_corner + horizontal * u + vertical * v - origin); }
+    public Ray get_ray(float s, float t) {
+        var rd = lens_radius * Util.random_in_unit_disk();
+        var offset = u * rd.x + v * rd.y;
+        return new Ray(origin + offset, lower_left_corner + horizontal * s + vertical * t - origin - offset);
+    }
 
     public Vector3 origin;
     public Vector3 lower_left_corner;
     public Vector3 horizontal;
     public Vector3 vertical;
+    public Vector3 u, v, w;
+    public float lens_radius;
 }
 
 public class RayTracer : MonoBehaviour {
@@ -257,7 +271,11 @@ public class RayTracer : MonoBehaviour {
             new sphere(new Vector3(-1, 0, -1), 0.5f, new dielectric(1.5f)),
             new sphere(new Vector3(-1, 0, -1), -0.45f, new dielectric(1.5f))
         };
-        var cam = new camera(new Vector3(-2, 2, 1), new Vector3(0 ,0, -1), new Vector3(0, 1, 0), 90, (float)texture.width / texture.height);
+        var lookfrom = new Vector3(3, 3, 2);
+        var lookat = new Vector3(0, 0, -1);
+        var dist_to_focus = (lookfrom - lookat).magnitude;
+        var aperture = 2.0f;
+        var cam = new camera(lookfrom, lookat, new Vector3(0, 1, 0), 20, (float)texture.width / texture.height, aperture, dist_to_focus);
         for (var j = texture.height - 1; j >= 0; j--) {
             for (var i = 0; i < texture.width; i++) {
                 var col = Color.black;
