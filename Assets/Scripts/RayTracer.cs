@@ -194,14 +194,21 @@ class sphere : hitable {
 }
 
 class camera {
-    public camera() {
-        lower_left_corner = new Vector3(-2, -1, -1);
-        horizontal = new Vector3(4, 0, 0);
-        vertical = new Vector3(0, 2, 0);
-        origin = new Vector3(0, 0, 0);
+    public camera(Vector3 lookfrom, Vector3 lookat, Vector3 vup, float vfov, float aspect) {
+        Vector3 u, v, w;
+        var theta = vfov * Mathf.PI / 180;
+        var half_height = Mathf.Tan(theta / 2);
+        var half_width = aspect * half_height;
+        origin = lookfrom;
+        w = (lookfrom - lookat).normalized;
+        u = Vector3.Cross(vup, w).normalized;
+        v = Vector3.Cross(w, u);
+        lower_left_corner = origin - half_width * u - half_height * v - w;
+        horizontal = 2 * half_width * u;
+        vertical = 2 * half_height * v;
     }
 
-    public Ray get_ray(float u, float v) { return new Ray(origin, lower_left_corner + horizontal * u + vertical * v); }
+    public Ray get_ray(float u, float v) { return new Ray(origin, lower_left_corner + horizontal * u + vertical * v - origin); }
 
     public Vector3 origin;
     public Vector3 lower_left_corner;
@@ -243,7 +250,6 @@ public class RayTracer : MonoBehaviour {
 
     static private Texture2D rayTrace(Texture2D texture) {
         const int ns = 100;
-        var lower_left_corner = new Vector3(-2, -1, -1);
         var world = new hitable_list {
             new sphere(new Vector3(0, 0, -1), 0.5f, new lambertian(new Color(0.1f, 0.2f, 0.5f))),
             new sphere(new Vector3(0, -100.5f, -1), 100, new lambertian(new Color(0.8f, 0.8f, 0.0f))),
@@ -251,7 +257,7 @@ public class RayTracer : MonoBehaviour {
             new sphere(new Vector3(-1, 0, -1), 0.5f, new dielectric(1.5f)),
             new sphere(new Vector3(-1, 0, -1), -0.45f, new dielectric(1.5f))
         };
-        var cam = new camera();
+        var cam = new camera(new Vector3(-2, 2, 1), new Vector3(0 ,0, -1), new Vector3(0, 1, 0), 90, (float)texture.width / texture.height);
         for (var j = texture.height - 1; j >= 0; j--) {
             for (var i = 0; i < texture.width; i++) {
                 var col = Color.black;
