@@ -42,6 +42,29 @@ static class Util {
         } while (Vector3.Dot(p, p) > 1.0);
         return p;
     }
+
+    static public hitable_list random_scene() {
+        var n = 500;
+        var list = new hitable_list();
+        list.Add(new sphere(new Vector3(0, -1000, -0), 1000, new lambertian(new Color(0.5f, 0.5f, 0.5f))));
+        for (var a = -11; a < 11; a++) {
+            for (var b = -11; b < 11; b++) {
+                var choose_mat = Random.value;
+                var center = new Vector3(a + 0.9f * Random.value, 0.2f, b + 0.9f * Random.value);
+                if (choose_mat < 0.8f) { // diffuse
+                    list.Add(new sphere(center, 0.2f, new lambertian(new Color(Random.value * Random.value, Random.value * Random.value, Random.value * Random.value))));
+                } else if (choose_mat < 0.95f) { // metal
+                    list.Add(new sphere(center, 0.2f, new metal(new Color(0.5f * (Random.value + 1), .5f * (Random.value + 1), .5f * (Random.value + 1)), 1)));
+                } else { // glass
+                    list.Add(new sphere(center, 0.2f, new dielectric(1.5f)));
+                }
+            }
+        }
+        list.Add(new sphere(new Vector3(0, 1, 0), 1, new dielectric(1.5f)));
+        list.Add(new sphere(new Vector3(-4, 1, 0), 1, new lambertian(new Color(0.4f, 0.2f, 0.1f))));
+        list.Add(new sphere(new Vector3(4, 1, 0), 1, new metal(new Color(0.7f, 0.6f, 0.5f), 0)));
+        return list;
+    }
 }
 
 class Ray {
@@ -235,10 +258,13 @@ public class RayTracer : MonoBehaviour {
     public RawImage m_image;
 
     void Start() {
+        var startedAt = System.DateTime.Now;
+        Debug.Log("Start ray tracing at " + startedAt);
         var texture = rayTrace(new Texture2D(640, 320));
+        var elapsed = System.DateTime.Now - startedAt;
+        Debug.Log("Finished " + elapsed);
         texture.Apply();
         m_image.texture = texture;
-        Debug.Log("Hello " + this.m_image.mainTexture.width + "," + this.m_image.mainTexture.height);
     }
 
     void Update() {
@@ -264,17 +290,11 @@ public class RayTracer : MonoBehaviour {
 
     static private Texture2D rayTrace(Texture2D texture) {
         const int ns = 100;
-        var world = new hitable_list {
-            new sphere(new Vector3(0, 0, -1), 0.5f, new lambertian(new Color(0.1f, 0.2f, 0.5f))),
-            new sphere(new Vector3(0, -100.5f, -1), 100, new lambertian(new Color(0.8f, 0.8f, 0.0f))),
-            new sphere(new Vector3(1, 0, -1), 0.5f, new metal(new Color(0.8f, 0.6f, 0.2f), 0.0f)),
-            new sphere(new Vector3(-1, 0, -1), 0.5f, new dielectric(1.5f)),
-            new sphere(new Vector3(-1, 0, -1), -0.45f, new dielectric(1.5f))
-        };
-        var lookfrom = new Vector3(3, 3, 2);
-        var lookat = new Vector3(0, 0, -1);
+        var world = Util.random_scene();
+        var lookfrom = new Vector3(12, 2, 3);
+        var lookat = new Vector3(0, 0.5f, 0);
         var dist_to_focus = (lookfrom - lookat).magnitude;
-        var aperture = 2.0f;
+        var aperture = 0.1f;
         var cam = new camera(lookfrom, lookat, new Vector3(0, 1, 0), 20, (float)texture.width / texture.height, aperture, dist_to_focus);
         for (var j = texture.height - 1; j >= 0; j--) {
             for (var i = 0; i < texture.width; i++) {
