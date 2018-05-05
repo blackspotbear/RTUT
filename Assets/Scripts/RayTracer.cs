@@ -256,8 +256,24 @@ class camera {
 public class RayTracer : MonoBehaviour {
 
     public RawImage m_image;
+    public int delay;
 
     void Start() {
+        delay = 10;
+    }
+
+    void Update() {
+        if (delay <= 0) {
+            return;
+        }
+
+        --delay;
+        if (delay == 0) {
+            delayedStart();
+        }
+    }
+
+    private void delayedStart() {
         UnityEngine.Profiling.Profiler.BeginSample("start");
 
         var startedAt = System.DateTime.Now;
@@ -269,10 +285,6 @@ public class RayTracer : MonoBehaviour {
         m_image.texture = texture;
 
         UnityEngine.Profiling.Profiler.EndSample();
-    }
-
-    void Update() {
-        // nothing to do.
     }
 
     static private Color color(Ray r, hitable_list world, int depth) {
