@@ -258,6 +258,8 @@ public class RayTracer : MonoBehaviour {
     public RawImage m_image;
 
     void Start() {
+        UnityEngine.Profiling.Profiler.BeginSample("start");
+
         var startedAt = System.DateTime.Now;
         Debug.Log("Start ray tracing at " + startedAt);
         var texture = rayTrace(new Texture2D(640, 320));
@@ -265,19 +267,34 @@ public class RayTracer : MonoBehaviour {
         Debug.Log("Finished " + elapsed);
         texture.Apply();
         m_image.texture = texture;
+
+        UnityEngine.Profiling.Profiler.EndSample();
     }
 
     void Update() {
-        
+        // nothing to do.
     }
 
     static private Color color(Ray r, hitable_list world, int depth) {
         hit_record rec;
-        if (world.hit(r, 0.001f, float.MaxValue, out rec)) {
+
+        UnityEngine.Profiling.Profiler.BeginSample("hit");
+        var isHit = world.hit(r, 0.001f, float.MaxValue, out rec);
+        UnityEngine.Profiling.Profiler.EndSample();
+
+        if (isHit) {
             Ray scatteded;
             Color attenuation;
-            if (depth < 50 && rec.mat.scatter(r, rec, out attenuation, out scatteded)) {
-                return attenuation * color(scatteded, world, depth + 1);
+            if (depth < 50) {
+                UnityEngine.Profiling.Profiler.BeginSample("scattter");
+                var b = rec.mat.scatter(r, rec, out attenuation, out scatteded);
+                UnityEngine.Profiling.Profiler.EndSample();
+
+                if (b) {
+                    return attenuation * color(scatteded, world, depth + 1);
+                } else {
+                    return Color.black;
+                }
             } else {
                 return Color.black;
             }
@@ -296,13 +313,16 @@ public class RayTracer : MonoBehaviour {
         var dist_to_focus = (lookfrom - lookat).magnitude;
         var aperture = 0.1f;
         var cam = new camera(lookfrom, lookat, new Vector3(0, 1, 0), 20, (float)texture.width / texture.height, aperture, dist_to_focus);
+
         for (var j = texture.height - 1; j >= 0; j--) {
             for (var i = 0; i < texture.width; i++) {
                 var col = Color.black;
                 for (var s = 0; s < ns; s++) {
+                    UnityEngine.Profiling.Profiler.BeginSample("getRay");
                     var u = (i + Random.Range(0f, 1f - float.Epsilon)) / texture.width;
                     var v = (j + Random.Range(0f, 1f - float.Epsilon)) / texture.height;
                     var r = cam.get_ray(u, v);
+                    UnityEngine.Profiling.Profiler.EndSample();
                     col += color(r, world, 0);
                 }
                 col /= ns;
