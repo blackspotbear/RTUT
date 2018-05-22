@@ -1,0 +1,327 @@
+﻿#pragma kernel CSMain
+
+static const float PI = 3.14159265;
+
+struct xorshift {
+    uint y;
+};
+
+void xorshift_set_seed(inout xorshift that, uint seed) {
+    that.y = seed;
+}
+
+uint xorshift_get_next(inout xorshift that) {
+    that.y = that.y ^ (that.y << 13);
+	that.y = that.y ^ (that.y >> 17);
+	that.y = that.y ^ (that.y << 15);
+    return that.y;
+}
+
+uint xorshift_get_valuei(inout xorshift that) {
+    return xorshift_get_next(that);
+}
+
+float xorshift_get_valuef(inout xorshift that) {
+    return (float)xorshift_get_next(that) / 0xFFFFFFFF;
+}
+
+float3 util_random_in_unit_sphere(inout xorshift rand) {
+    float3 o = {1, 1, 1};
+    float3 p;
+    do {
+        float3 q = {
+            xorshift_get_valuef(rand),
+            xorshift_get_valuef(rand),
+            xorshift_get_valuef(rand)
+        };
+        p = 2.0f * q - o;
+    } while (length(p) > 1.0f);
+    return p;
+}
+
+float3 util_random_in_unit_disk(inout xorshift rand) {
+    float3 o = {1, 1, 0};
+    float3 p;
+    do {
+        float3 q = {
+            xorshift_get_valuef(rand),
+            xorshift_get_valuef(rand),
+            0
+        };
+        p = 2 * q - o;
+    } while (dot(p, p) > 1.0);
+    return p;
+}
+
+float3 util_reflect(float3 v, float3 n) {
+    return v - 2 * dot(v, n) * n;
+}
+
+bool util_refract(float3 v, float3 n, float ni_over_nt, out float3 refracted) {
+    float3 uv = normalize(v);
+    float dt = dot(uv, n);
+    float discriminant = 1.0 - ni_over_nt * ni_over_nt * (1.0 - dt * dt);
+    if (discriminant > 0) {
+        // :/ use not v but uv
+        refracted = ni_over_nt * (uv - n * dt) - n * sqrt(discriminant);
+        return true;
+    }
+    refracted.r = 0;
+    refracted.g = 0;
+    refracted.b = 0;
+    return false;
+}
+
+float util_schlick(float cosine, float ref_idx) {
+    float r0 = (1 - ref_idx) / (1 + ref_idx);
+    r0 = r0 * r0;
+    return r0 + (1 - r0) * pow(1 - cosine, 5);
+}
+
+struct ray_t {
+    float3 a;
+    float3 b;
+};
+
+void ray_init(out ray_t that, float3 a, float3 b) {
+    that.a = a;
+    that.b = b;
+}
+
+float3 ray_origin(inout ray_t that) {
+    return that.a;
+}
+
+float3 ray_direction(inout ray_t that) {
+    return that.b;
+}
+
+float3 ray_point_at_parameter(inout ray_t that, float t) {
+    return that.a + that.b * t;
+}
+
+struct material_t {
+    int type;
+    float4 albedo;
+    float ref_idx;
+    float fuzz;
+};
+
+struct hit_record_t {
+    float t;
+    float3 p;
+    float3 normal;
+    material_t mat;
+};
+
+bool lambertian(ray_t ray_in, hit_record_t rec, inout xorshift rand, out float3 attenuation, out ray_t scattered) {
+    float3 target = rec.p + rec.normal + util_random_in_unit_sphere(rand);
+    ray_init(scattered, rec.p, target - rec.p);
+    attenuation.rgb = rec.mat.albedo.rgb;
+    return true;
+}
+
+bool metal(ray_t ray_in, hit_record_t rec, inout xorshift rand, out float3 attenuation, out ray_t scattered) {
+    float3 reflected = util_reflect(normalize(ray_direction(ray_in)), rec.normal);
+    ray_init(scattered, rec.p, reflected + rec.mat.fuzz * util_random_in_unit_sphere(rand));
+    attenuation.rgb = rec.mat.albedo.rgb;
+    return dot(ray_direction(scattered), rec.normal) > 0;
+}
+
+bool dielectric(ray_t r_in, hit_record_t rec, inout xorshift rand, out float3 attenuation, out ray_t scattered) {
+    float3 outward_normal;
+    float3 reflected = util_reflect(ray_direction(r_in), rec.normal);
+    float ni_over_nt;
+    attenuation.r = 1.0f;
+    attenuation.g = 1.0f;
+    attenuation.b = 1.0f;
+    float3 refracted;
+    float reflect_prob;
+    float cosine;
+    if (dot(ray_direction(r_in), rec.normal) > 0.0f) {
+        outward_normal = -rec.normal;
+        ni_over_nt = rec.mat.ref_idx;
+        cosine = rec.mat.ref_idx * dot(ray_direction(r_in), rec.normal) / length(ray_direction(r_in));
+    } else {
+        outward_normal = rec.normal;
+        ni_over_nt = 1.0f / rec.mat.ref_idx;
+        cosine = -dot(ray_direction(r_in), rec.normal) / length(ray_direction(r_in));
+    }
+    if (util_refract(ray_direction(r_in), outward_normal, ni_over_nt, refracted)) {
+        reflect_prob = util_schlick(cosine, rec.mat.ref_idx);
+    } else {
+        reflect_prob = 1;
+    }
+    if (xorshift_get_valuef(rand) < reflect_prob) {
+        ray_init(scattered, rec.p, reflected);
+    } else {
+        ray_init(scattered, rec.p, refracted);
+    }
+    return true;
+}
+
+bool get_scatter(ray_t ray_in, hit_record_t rec, inout xorshift rand, out float3 attenuation, out ray_t scattered) {
+    switch (rec.mat.type) {
+        case 0: return lambertian(ray_in, rec, rand, attenuation, scattered);
+        case 1: return metal(ray_in, rec, rand, attenuation, scattered);
+        case 2: return dielectric(ray_in, rec, rand, attenuation, scattered);
+        default: return lambertian(ray_in, rec, rand, attenuation, scattered);
+    }
+}
+
+struct hitable_t {
+    int type;
+    float3 center;
+    float radius;
+    material_t material;
+};
+
+bool sphere(ray_t r, float t_min, float t_max, inout hitable_t hitable, inout hit_record_t rec) {
+    float3 oc = ray_origin(r) - hitable.center;
+    float a = dot(ray_direction(r), ray_direction(r));
+    float b = dot(oc, ray_direction(r));
+    float c = dot(oc, oc) - hitable.radius * hitable.radius;
+    float discrement = b * b - a * c;
+    if (discrement > 0) {
+        float temp = (-b - sqrt(b * b - a * c)) / a;
+        if (temp < t_max && temp > t_min) {
+            rec.t = temp;
+            rec.p = ray_point_at_parameter(r, rec.t);
+            rec.normal = (rec.p - hitable.center) / hitable.radius;
+            rec.mat = hitable.material;
+            return true;
+        }
+        temp = (-b + sqrt(b * b - a * c)) / a;
+        if (temp < t_max && temp > t_min) {
+            rec.t = temp;
+            rec.p = ray_point_at_parameter(r, rec.t);
+            rec.normal = (rec.p - hitable.center) / hitable.radius;
+            rec.mat = hitable.material;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool _ray_hit(ray_t that, float t_min, float t_max, inout hitable_t hitable, inout hit_record_t rec) {
+    switch (hitable.type) {
+        case 0: return sphere(that, t_min, t_max, hitable, rec);
+        default: return sphere(that, t_min, t_max, hitable, rec);
+    }
+}
+
+bool ray_hit(ray_t r, float t_min, float t_max, StructuredBuffer<hitable_t> hitables, int numStructs, out hit_record_t rec) {
+    hit_record_t temp_rec;
+    bool hit_anything = false;
+    float closest_so_far = t_max;
+
+    for (int i = 0; i < numStructs; i++) {
+        hitable_t h = hitables[i];
+        if (_ray_hit(r, t_min, closest_so_far, h, temp_rec)) {
+            hit_anything = true;
+            closest_so_far = temp_rec.t;
+            rec = temp_rec;
+        }
+    }
+
+    return hit_anything;
+}
+
+struct camera_t {
+    float3 origin;
+    float3 lower_left_corner;
+    float3 horizontal;
+    float3 vertical;
+    float3 u, v, w;
+    float lens_radius;
+};
+
+void camera_init(inout camera_t that, float3 lookfrom, float3 lookat, float3 vup, float vfov, float aspect, float aperture, float focus_dist) {
+    that.lens_radius = aperture / 2;
+    float theta = vfov * PI / 180;
+    float half_height = tan(theta / 2);
+    float half_width = aspect * half_height;
+    that.origin = lookfrom;
+    that.w = normalize(lookfrom - lookat);
+    that.u = normalize(cross(vup, that.w));
+    that.v = cross(that.w, that.u);
+    that.lower_left_corner = that.origin - half_width * focus_dist * that.u - half_height * focus_dist * that.v - focus_dist * that.w;
+    that.horizontal = 2 * half_width * focus_dist * that.u;
+    that.vertical = 2 * half_height * focus_dist * that.v;
+}
+
+void camera_get_ray(camera_t that, float s, float t, inout xorshift rand, out ray_t ray) {
+    float3 rd = that.lens_radius * util_random_in_unit_disk(rand);
+    float3 offset = that.u * rd.x + that.v * rd.y;
+
+    ray_init(
+        ray,
+        that.origin + offset,
+        that.lower_left_corner + that.horizontal * s + that.vertical * t - that.origin - offset
+    );
+}
+
+float3 color(ray_t r, StructuredBuffer<hitable_t> world, int numHitable, inout xorshift rand) {
+    const float3 black = {0, 0, 0};
+    const float3 white = {1, 1, 1};
+    const float3 sky = {0.5, 0.7, 1};
+
+    float3 col = white;
+
+    for (int i = 0; i < 50; i++) {
+        hit_record_t rec;
+        bool isHit = ray_hit(r, 0.001, 1000000, world, numHitable, rec);
+        if (isHit) {
+            ray_t scattered;
+            float3 attenuation;
+            bool b = get_scatter(r, rec, rand, attenuation, scattered);
+            if (b) {
+                col *= attenuation;
+                r = scattered;
+            } else {
+                col = black;
+                break;
+            }
+        } else {
+            float3 unit_direction = normalize(ray_direction(r));
+            float t = 0.5f * (unit_direction.y + 1.0f);
+            col *= (1.0f - t) * white + t * sky;
+            break;
+        }
+    }
+
+    return col;
+}
+
+StructuredBuffer<camera_t> cameras;
+StructuredBuffer<hitable_t> hitables;
+RWTexture2D<float4> textureBuffer;
+int numHitable;
+int texWidth;
+int texHeight;
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID) {
+    camera_t camera = cameras[0];
+    xorshift rand;
+    xorshift_set_seed(rand, id.x * 100 + id.y + 10 + id.z);
+
+    int ns = 100;
+    float4 col = {0, 0, 0, 1};
+    for (int i = 0; i < ns; i++) {
+        float u = (id.x + xorshift_get_valuef(rand)) / texWidth;
+        float v = (id.y + xorshift_get_valuef(rand)) / texHeight;
+
+        ray_t ray;
+        camera_get_ray(camera, u, v, rand, ray);
+
+        float3 aCol = color(ray, hitables, numHitable, rand);
+
+        col.rgb += aCol.rgb;
+    }
+    col.rgb /= ns;
+    col = sqrt(col);
+
+    textureBuffer[id.xy] = col;
+}
