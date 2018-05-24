@@ -15,3 +15,7 @@ RTUT is a weekend ray tracer on Unity, which is following [@Peter_shirley](https
 ## LICENSE
 
 This software is released under the MIT License, see LICENSE.txt.
+
+## Other versions
+* [C# Job System](../../tree/use-jobsystem) ⚡
+* [Compute Shader](../../tree/use-computeshader) ⚡⚡⚡
