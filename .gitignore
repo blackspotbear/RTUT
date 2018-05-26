@@ -38,4 +38,5 @@ sysinfo.txt
 
 # appended by me
 *.log
+*.swp
 RTUT*.app/
