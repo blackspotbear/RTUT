@@ -407,6 +407,7 @@ public class RayTracer : MonoBehaviour {
         }
     }
 
+    [Unity.Burst.BurstCompile]
     struct RayTraceJob : IJobParallelFor {
         [ReadOnly]
         public int width;
